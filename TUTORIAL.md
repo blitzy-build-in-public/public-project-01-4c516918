@@ -10,15 +10,22 @@ make the request, see which file teaches what, run the test, and know where the 
 
 ## Prerequisites
 
-Node.js 22.18.0 or later. Check it before anything else:
+Node.js 22.18.0 or later, on the latest patch release of whichever supported line you run. Check
+the version before anything else:
 
 ```
 node --version     # expect v22.18.0 or later
 ```
 
-- The floor is recorded in `package.json` as `engines.node: ">=22.18.0"`, and it exists for one
-  concrete reason: the entry-point guard in `server.js` is `import.meta.main`, which does not exist
-  before 22.18.0. Node 24.x (Active LTS) and current 22.x patch releases satisfy it.
+- 22.18.0 is a **feature** floor rather than a security floor: it is the oldest runtime with the
+  entry-point guard `server.js` uses, `import.meta.main`, and the floor is recorded in `package.json`
+  as `engines.node: ">=22.18.0"`. Node 24.x (Active LTS) and current 22.x patch releases satisfy it.
+- **Run the latest patch of your line.** Node ships its fixes for the platform itself — `node:http`,
+  the module this server is built on, included — in new releases of every supported line, so 22.18.0
+  and the other early 22.x patches predate the fixes published since. `engines.node` is a semver
+  range and cannot express a patch floor, so this check is what keeps you patched: `node --version`
+  should show the newest patch of the line you are on — 22.x is Maintenance LTS to 2027-04-30, 24.x
+  is Active LTS — and not merely 22.18.0.
 - npm ships with Node.js and is the only package-manager assumption here. It is used for the two
   scripts `npm start` and `npm test`, and for nothing else.
 - **No install step is required at all.** The project declares no dependency — no `dependencies`, no
@@ -31,8 +38,8 @@ startup line: the process exits with status 0. npm's banner still appears — th
 **Run it** describes — so what is missing is the `Server listening on` line, not all of the output.
 Nothing is being swallowed: `import.meta.main` is `undefined` there, so the guard that begins
 listening is falsy exactly as it is when the file is imported, and the process simply ends. It is a
-silent no-op, not an error. `node --version` is the diagnosis, and running on 22.18.0 or later is
-the fix.
+silent no-op, not an error. `node --version` is the diagnosis, and running on 22.18.0 or later — on
+the latest patch of the line you choose — is the fix.
 
 The test suite catches the same mistake: its final case starts the entry point in a child process
 and fails when no startup line arrives, so on an old runtime `npm test` fails loudly instead of
@@ -229,8 +236,9 @@ response metadata.
 - **`"type": "module"`** makes every `.js` file in the package an ES module, so `server.js` and the
   test use `import`/`export` and relative specifiers carry their extension
   (`import { start } from '../server.js'`).
-- **`engines.node: ">=22.18.0"`** records the runtime floor. npm treats that field as advisory,
-  which is why this document repeats the floor with the `node --version` check.
+- **`engines.node: ">=22.18.0"`** records the runtime floor. npm treats that field as advisory, and a
+  semver range cannot express a patch floor, which is why this document repeats the check — and the
+  patch-level expectation — in Prerequisites.
 - **The two scripts** are the commands to type: `start` runs `node server.js`, and `test` runs
   `node --test test/hello.test.js`.
 
