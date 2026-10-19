@@ -224,8 +224,10 @@ response metadata.
   `server.address().port`. That is how the test binds a free, OS-assigned port. It **rejects** when
   the port cannot be bound: the failure is reported in one line with a non-zero exit status, so a
   caller is never left waiting for a bind that will not happen.
-- The **`'error'` listener** — one line to stderr and a non-zero exit status, no retry loop and no
-  unhandled stack trace as your first impression of the project.
+- The **`'error'` listener** — one line to stderr, and a non-zero exit status when the server could
+  not start; no retry loop and no unhandled stack trace as your first impression of the project. An
+  error raised while it is serving is reported the same way, as `Server error: <reason>`, but sets
+  no failure status and does not stop the server.
 - The **entry-point guard** — `if (import.meta.main) await start().catch(() => {});` begins listening
   only when the file is run directly; the rejection is caught there because a failed bind has already
   been reported in one line. Import it from a test or a script and no port is bound, which is what

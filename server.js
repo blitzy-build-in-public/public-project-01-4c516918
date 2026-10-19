@@ -90,6 +90,24 @@ function reportStartupFailure(reason) {
 }
 
 /**
+ * Report one error raised after the bind, on stderr, in a single line.
+ *
+ * The bind has already succeeded and the startup line has already been printed, so this is not a
+ * startup failure: reporting it as one would name a failure that did not happen while the process
+ * keeps serving. Nothing else is written - this line is the whole report - and no exit status is set,
+ * because the server is still serving.
+ *
+ * The reason is collapsed to one line exactly as `reportStartupFailure` collapses it, because it too
+ * can carry text from the environment that contains newlines, which would otherwise split the report.
+ *
+ * @param {string} reason What went wrong.
+ * @returns {void}
+ */
+function reportServerError(reason) {
+  console.error(`Server error: ${String(reason).replace(/[\r\n]+/g, ' ')}`);
+}
+
+/**
  * Name a rejected port for the failure line.
  *
  * A value that never resolved to a number is `NaN`, which names nothing the reader wrote, so the
@@ -132,7 +150,9 @@ function urlHost(address) {
  *
  * A startup failure - an unusable port, or a bind the runtime refuses - is reported on stderr in one
  * line and sets a non-zero exit status, is never retried, and rejects this promise rather than
- * leaving the caller waiting for a bind that will not happen.
+ * leaving the caller waiting for a bind that will not happen. An error raised after the bind has
+ * succeeded is reported in one line as a server error instead, and sets no exit status, because the
+ * server is still serving.
  *
  * @param {{ host?: string, port?: number }} [options] The host and port to bind.
  * @returns {Promise<import('node:http').Server>} The listening server.
@@ -145,9 +165,19 @@ export async function start({ host = HOST, port = PORT } = {}) {
   const bindHost = typeof host === 'string' && host.trim() === '' ? HOST : host;
 
   await new Promise((resolve, reject) => {
+    // The listen callback flips this once the bind has succeeded. Until then the server has not
+    // started, so an error is a startup failure; from then on it is a server error instead.
+    let listening = false;
+
     // One listener, registered before the bind, so a refused bind is reported here rather than raised
-    // as an unhandled 'error' event, and so that every failure reaches the caller as a rejection.
+    // as an unhandled 'error' event, and so that every failure reaches the caller as a rejection. It
+    // deliberately stays attached after the bind: an error raised while the server is serving is
+    // reported in one line rather than thrown as an unhandled 'error' event.
     const fail = (err) => {
+      if (listening) {
+        reportServerError(err.message);
+        return;
+      }
       reportStartupFailure(err.message);
       reject(err);
     };
@@ -170,6 +200,7 @@ export async function start({ host = HOST, port = PORT } = {}) {
 
     try {
       server.listen(port, bindHost, () => {
+        listening = true;
         const address = server.address();
         console.log(`Server listening on http://${urlHost(address.address)}:${address.port}`);
         resolve();
