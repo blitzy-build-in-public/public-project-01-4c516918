@@ -1,12 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { start } from '../server.js';
-
-// The repository root, resolved from this file's own URL: the entry-point case below spawns the
-// literal `server.js`, so its working directory must not depend on where the runner was invoked.
-const rootDir = fileURLToPath(new URL('..', import.meta.url));
 
 // Resolves with the event's arguments the first time it fires.
 const once = (emitter, event) =>
@@ -19,10 +14,12 @@ before(async () => {
   // Port 0 lets the OS choose, so the suite never needs the tutorial's port 3000.
   server = await start({ port: 0 });
   // An inherited HOST would decide the bound address, so the client URL is derived from the address
-  // actually bound rather than from the environment; a wildcard bind is reached over loopback.
+  // actually bound rather than from the environment; a wildcard bind is reached over loopback, and an
+  // IPv6 literal is bracketed because a URL host cannot carry one bare.
   const { address, port } = server.address();
   const host = address === '0.0.0.0' || address === '::' ? '127.0.0.1' : address;
-  base = `http://${host}:${port}`;
+  const urlHost = host.includes(':') ? `[${host}]` : host;
+  base = `http://${urlHost}:${port}`;
 });
 
 after(async () => {
@@ -66,9 +63,7 @@ test('the entry point, run as a child process, serves GET /hello', async () => {
   // HOST is set alongside PORT so the startup line names loopback whatever the reviewer's shell
   // exports, and PORT=0 keeps the tutorial's port free.
   const child = spawn(process.execPath, ['server.js'], {
-    cwd: rootDir,
     env: { ...process.env, HOST: '127.0.0.1', PORT: '0' },
-    stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
