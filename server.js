@@ -12,8 +12,9 @@ const METHOD_NOT_ALLOWED_BODY = 'Method Not Allowed';
  * Resolve the port to bind from the `PORT` environment value.
  *
  * An unset, empty or whitespace-only value configures no port, so the 3000 default applies. Only a
- * decimal literal is taken as written: `Number()` would also accept `0x10`, `1e3` and `3000.5`,
- * silently binding a port other than the one the reader wrote. Anything else resolves to `NaN`,
+ * decimal literal is taken as written. `Number()` would also accept `0x10` and `1e3`, silently
+ * binding a port other than the one the reader wrote, and `3000.5`, which `listen` refuses: none of
+ * the three is the port the reader asked for, so none is passed on. Anything else resolves to `NaN`,
  * which `start()` rejects before it listens. An explicit `0` means "any free port" and is kept.
  *
  * @param {string|undefined} raw The `PORT` value as the environment supplies it.
@@ -170,9 +171,9 @@ export async function start({ host = HOST, port = PORT } = {}) {
     let listening = false;
 
     // One listener, registered before the bind, so a refused bind is reported here rather than raised
-    // as an unhandled 'error' event, and so that every failure reaches the caller as a rejection. It
-    // deliberately stays attached after the bind: an error raised while the server is serving is
-    // reported in one line rather than thrown as an unhandled 'error' event.
+    // as an unhandled 'error' event, and so that every failure before the bind reaches the caller as
+    // a rejection. It deliberately stays attached after the bind: an error raised while the server is
+    // serving is reported in one line rather than thrown as an unhandled 'error' event.
     const fail = (err) => {
       if (listening) {
         reportServerError(err.message);
