@@ -24,9 +24,11 @@ node --version     # expect v22.18.0 or later
 - **No install step is required at all.** The project declares no dependency — no `dependencies`, no
   `devDependencies`, no lock file — so there is nothing to download. Do not wait for one.
 
-### If the start command prints nothing
+### If no startup line appears
 
-On a runtime older than 22.18.0 — 20.x, 18.x — `npm start` prints nothing and exits with status 0.
+On a runtime older than 22.18.0 — 20.x, 18.x — `npm start` runs the script and the server prints no
+startup line: the process exits with status 0. npm's banner still appears — the two `>` lines
+**Run it** describes — so what is missing is the `Server listening on` line, not all of the output.
 Nothing is being swallowed: `import.meta.main` is `undefined` there, so the guard that begins
 listening is falsy exactly as it is when the file is imported, and the process simply ends. It is a
 silent no-op, not an error. `node --version` is the diagnosis, and running on 22.18.0 or later is
@@ -81,6 +83,13 @@ then `http://127.0.0.1:4000/hello`.
 | bash / zsh | `HOST=0.0.0.0 npm start` |
 | PowerShell | `$env:HOST = "0.0.0.0"; npm start` |
 | Windows cmd | `set HOST=0.0.0.0 && npm start` |
+
+The startup line names the address the server actually bound, so this change does show up in it:
+`HOST=0.0.0.0 npm start` prints `Server listening on http://0.0.0.0:3000`. That address is a bind
+address rather than one to call — `0.0.0.0` means every interface on this machine — and the
+client URL does not change with `HOST`: from this machine the endpoint is still
+`http://127.0.0.1:3000/hello`, or `http://127.0.0.1:<port>/hello` when you have set `PORT` too.
+Another machine on the network reaches it at `http://<machine-ip>:3000/hello`.
 
 **`HOST=0.0.0.0` exposes the listener to your local network** — anyone who can reach the machine can
 call the endpoint. That is exactly why the default is `127.0.0.1`, which accepts connections from
@@ -229,8 +238,9 @@ An endpoint can be checked over real HTTP with nothing but the runtime:
 - `start({ port: 0 })` binds an OS-assigned port and `server.address().port` reads it back, so the
   suite never needs port 3000 and never collides with a server you already have running.
 - The global `fetch` is the client, so no HTTP client package is needed.
-- Each case asserts one property of the contract character for character: the status, the
-  `Content-Type`, the `Content-Length` and the body text.
+- Between them the cases pin the contract character for character: the status of every request,
+  the `Content-Type` and `Content-Length` of the 200, the `Allow: GET` of the 405, and every body
+  text the suite reads.
 - The last case spawns the entry point itself in a child process, asserts the startup line it
   prints and issues a request through it. That is the case that catches a runtime older than the
   floor, where the guard never fires and no startup line ever arrives.
@@ -268,7 +278,8 @@ calling HTTP client — `curl`, a browser or the test's `fetch` — receives `He
 the transcripts above are how you prove it.
 
 That is the whole project: four files, one endpoint, no dependency. The natural next exercises, in
-rough order of difficulty — the first five live in `server.js`, the last one adds files of its own:
+rough order of difficulty — the first four live in `server.js`, the fifth also adds a dependency to
+`package.json`, and the last one adds files of its own:
 
 - Parse the URL so that `/hello?x=1` and `/hello/` still match.
 - Add a second route, and see at what point a router starts to earn its keep.
