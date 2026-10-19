@@ -214,12 +214,15 @@ response metadata.
   encoding.
 - The **`start({ host, port })` factory** — it returns a `Promise` that resolves with the listening
   server, so a caller can await the bind and read the port actually assigned from
-  `server.address().port`. That is how the test binds a free, OS-assigned port.
+  `server.address().port`. That is how the test binds a free, OS-assigned port. It **rejects** when
+  the port cannot be bound: the failure is reported in one line with a non-zero exit status, so a
+  caller is never left waiting for a bind that will not happen.
 - The **`'error'` listener** — one line to stderr and a non-zero exit status, no retry loop and no
   unhandled stack trace as your first impression of the project.
-- The **entry-point guard** — `if (import.meta.main) await start();` begins listening only when the
-  file is run directly. Import it from a test or a script and no port is bound, which is what lets
-  the test import the module without taking port 3000.
+- The **entry-point guard** — `if (import.meta.main) await start().catch(() => {});` begins listening
+  only when the file is run directly; the rejection is caught there because a failed bind has already
+  been reported in one line. Import it from a test or a script and no port is bound, which is what
+  lets the test import the module without taking port 3000.
 
 ### `package.json` — the manifest
 
