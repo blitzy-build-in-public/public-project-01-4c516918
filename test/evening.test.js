@@ -33,6 +33,10 @@ test('GET /evening returns 200 with the exact body Good evening', async () => {
   assert.strictEqual(res.headers.get('content-type'), 'text/plain; charset=utf-8');
   assert.strictEqual(res.headers.get('content-length'), '12');
   assert.strictEqual(await res.text(), 'Good evening');
+  // The framework's defaults would add both headers, and to every response it handles — the
+  // hand-written endpoint's included — so their absence is the header surface the contract publishes.
+  assert.strictEqual(res.headers.get('x-powered-by'), null);
+  assert.strictEqual(res.headers.get('etag'), null);
 });
 
 test('GET /evening/ returns 404 because the path is matched exactly', async () => {
@@ -41,7 +45,7 @@ test('GET /evening/ returns 404 because the path is matched exactly', async () =
   assert.strictEqual(res.status, 404);
 });
 
-test('GET /EVENING returns 404 because the path is matched case-sensitively', async () => {
+test('GET /EVENING returns 404 because routing is case-sensitive', async () => {
   // The other half of the same boundary: matching that ignored case would answer 200 here.
   const res = await fetch(`${base}/EVENING`);
   assert.strictEqual(res.status, 404);
@@ -66,7 +70,7 @@ test('HEAD /evening returns 405 with Allow: GET and no body', async () => {
   assert.strictEqual(await res.text(), '');
 });
 
-test('the same listener serves GET /hello from the hand-written handler', async () => {
+test('GET /hello is served by the same listener', async () => {
   // Pins the composition itself: one process, one listener, and the endpoint the framework does not
   // serve still answering from the handler that answered it before.
   const res = await fetch(`${base}/hello`);
