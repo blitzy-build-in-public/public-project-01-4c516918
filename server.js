@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { createApp } from './app.js';
 
 // An empty or whitespace-only override configures nothing, so it is treated exactly like an unset
 // variable: only a deliberate value moves the host off loopback or the port off 3000.
@@ -160,7 +161,7 @@ function urlHost(address) {
  * @throws {RangeError|Error} The reason the server could not start listening.
  */
 export async function start({ host = HOST, port = PORT } = {}) {
-  const server = createServer(handleRequest);
+  const server = createServer(createApp({ fallback: handleRequest }));
   // An empty host means an unset one, exactly as an empty `HOST` does: the unspecified address it
   // would otherwise resolve to accepts connections from every interface.
   const bindHost = typeof host === 'string' && host.trim() === '' ? HOST : host;
