@@ -15,8 +15,11 @@ const METHOD_NOT_ALLOWED_BODY = 'Method Not Allowed';
  * visible to a client: the framework advertises itself on every response it handles, the responses
  * written by a handler mounted in its chain included, generates an entity tag on the responses it
  * writes itself, and matches a route against the trailing-slash and differently-cased forms of its
- * path. Overridden, the endpoint here and the endpoint the framework does not serve are
- * indistinguishable in status, media type, headers and body.
+ * path. Overridden, the two endpoints answer the forms these settings decide alike — the same
+ * status, media type, headers and body for a URL neither of them serves, and the same header
+ * surface on the path each does — so a caller cannot tell which endpoint the framework serves.
+ * The one divergence left is whatever a request target carries besides the path — a query string above
+ * all — and the route below records it rather than leaving it to be discovered.
  *
  * @param {{ fallback: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => void }} options
  *   `fallback` answers every request no route here claims and is expected to end the response itself.
@@ -25,9 +28,13 @@ const METHOD_NOT_ALLOWED_BODY = 'Method Not Allowed';
 export function createApp({ fallback }) {
   const app = express();
 
-  // Both headers describe the framework rather than the answer, and the advertisement is added to every
-  // response the application handles, `fallback`'s included: either would change what the existing
-  // endpoint returns, so both are turned off rather than explained in the published contract.
+  // Two framework defaults are turned off here, each for its own reason. The advertisement header is
+  // added to every response the application handles, `fallback`'s included, so leaving it on would put
+  // a header on `GET /hello` that the published contract does not describe. The `etag` default is read
+  // only where the framework writes a response itself with `res.send` — here the `405` gate below — so
+  // leaving it on would put a validator on that answer alone, a header the hand-written path's own
+  // `405`, written with `res.writeHead` and `res.end`, does not carry. Both are turned off rather than
+  // explained in the published contract.
   app.disable('x-powered-by');
   app.set('etag', false);
 
@@ -57,8 +64,9 @@ export function createApp({ fallback }) {
   /**
    * `GET /evening` — `200 OK`, `text/plain; charset=utf-8`, the body `Good evening`.
    *
-   * The media type is set explicitly because the contract publishes `text/plain; charset=utf-8`, where
-   * the framework's default for a string body is `text/html`.
+   * The media type is set explicitly because the contract publishes `text/plain; charset=utf-8` and
+   * this writer ends the response with `res.end`, which sets no media type of its own: omit the type
+   * and the answer would carry no `Content-Type` at all.
    *
    * The response is written with the response object rather than through `res.send`, because `res.send`
    * reads the request as a conditional one: a request carrying `If-None-Match: *` makes it replace this
