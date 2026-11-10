@@ -33,10 +33,12 @@ test('GET /evening returns 200 with the exact body Good evening', async () => {
   assert.strictEqual(res.headers.get('content-type'), 'text/plain; charset=utf-8');
   assert.strictEqual(res.headers.get('content-length'), '12');
   assert.strictEqual(await res.text(), 'Good evening');
-  // Left on, the framework's defaults would advertise it (`X-Powered-By`) on every response it handles,
-  // this endpoint's and the hand-written one's alike, while an entity tag is generated only for a
-  // response the framework writes itself; neither response here is one, and both defaults are turned
-  // off, so their absence is the header surface the contract publishes.
+  // The advertisement header is added to every response the application handles, this answer's and
+  // the hand-written endpoint's alike, so its absence is asserted on answers a client reads.
+  // The `etag` default is read only where the framework writes a response itself with `res.send`,
+  // and this writer does not: it ends the response directly. So the assertion below records this
+  // answer's header surface rather than pinning the setting, which is pinned on the two `405`
+  // answers of the cases below — the only responses here the framework writes with `res.send`.
   assert.strictEqual(res.headers.get('x-powered-by'), null);
   assert.strictEqual(res.headers.get('etag'), null);
 
@@ -109,6 +111,13 @@ test('POST /evening returns 405 with Allow: GET and the body Method Not Allowed'
   assert.strictEqual(res.headers.get('content-type'), 'text/plain; charset=utf-8');
   assert.strictEqual(res.headers.get('content-length'), '18');
   assert.strictEqual(await res.text(), 'Method Not Allowed');
+  // The framework writes this answer itself with `res.send`, which is the only place the `etag`
+  // setting is read: left on, the framework's default would put a validator on this `405` and on
+  // the `HEAD` case below, and on no other answer the contract publishes, so these are the
+  // assertions that fail if `app.set('etag', false)` is removed. `X-Powered-By` is added to every
+  // response the application handles, this one included.
+  assert.strictEqual(res.headers.get('x-powered-by'), null);
+  assert.strictEqual(res.headers.get('etag'), null);
 });
 
 test('HEAD /evening returns 405 with Allow: GET and no body', async () => {
@@ -120,6 +129,11 @@ test('HEAD /evening returns 405 with Allow: GET and no body', async () => {
   assert.strictEqual(res.headers.get('content-type'), 'text/plain; charset=utf-8');
   assert.strictEqual(res.headers.get('content-length'), '18');
   assert.strictEqual(await res.text(), '');
+  // The second of the two `res.send`-written answers — the gate in `app.js` produces both — so the
+  // `etag` override is load-bearing here as it is on the `POST` case above: left on, the framework's
+  // default would put a validator on both `405`s and on no other answer the contract publishes.
+  assert.strictEqual(res.headers.get('x-powered-by'), null);
+  assert.strictEqual(res.headers.get('etag'), null);
 });
 
 test('GET /hello is served by the same listener', async () => {
