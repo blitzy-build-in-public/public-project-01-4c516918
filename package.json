@@ -2,13 +2,16 @@
   "name": "nodejs-hello-world-tutorial",
   "version": "1.0.0",
   "private": true,
-  "description": "A minimal Node.js tutorial: one HTTP endpoint at /hello returning Hello world.",
+  "description": "A minimal Node.js tutorial: a hand-written node:http endpoint at /hello and an Express route at /evening.",
   "type": "module",
   "engines": {
     "node": ">=22.18.0"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/hello.test.js"
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "express": "5.3.0"
   }
 }
