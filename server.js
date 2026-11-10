@@ -112,13 +112,9 @@ function reportServerError(reason) {
 /**
  * Name a rejected port for the failure line.
  *
- * The reader has to recognise the value the environment carried, so the `PORT` text is quoted
- * whenever the resolved number does not spell that text out again: `NaN` names nothing the reader
- * wrote, and neither does the `1e+21` or the `Infinity` that a long run of digits collapses into, so
- * the text the environment carried is reported for both. A text the number does spell out again -
- * `99999`, `70000` - is the reader's own value already, so it is reported as that number instead.
- * The text is consulted only where it is what the rejected value came from: a port handed to
- * `start()` in code is named as that port, never as whatever the environment happens to hold.
+ * A value that never resolved to a number is `NaN`, which names nothing the reader wrote, so the
+ * `PORT` text it was read from is quoted instead; a text that is itself a port number cannot have
+ * produced that `NaN`, so it is not consulted.
  *
  * @param {number|string} port The rejected port value.
  * @returns {string} The offending value as the reader wrote it.
@@ -126,15 +122,8 @@ function reportServerError(reason) {
 function describePort(port) {
   if (typeof port === 'string') return JSON.stringify(port);
   const raw = process.env.PORT;
-  if (raw !== undefined) {
-    const resolved = readPort(raw);
-    const text = raw.trim();
-    // `NaN` equals nothing, itself included, so the two are compared for it separately.
-    const fromText = Number.isNaN(resolved) ? Number.isNaN(port) : resolved === port;
-    // The number spells the text out again only when the text is a plain decimal it names exactly.
-    if (fromText && !(/^\d+$/.test(text) && String(resolved) === text)) {
-      return JSON.stringify(raw);
-    }
+  if (Number.isNaN(port) && raw !== undefined && Number.isNaN(readPort(raw))) {
+    return JSON.stringify(raw);
   }
   return String(port);
 }

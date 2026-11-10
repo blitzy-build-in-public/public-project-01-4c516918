@@ -312,13 +312,14 @@ rendered as plain text. A browser cannot show you the raw headers, so use it for
   `Method Not Allowed`. That is the same convention `server.js` publishes for `/hello`, so a caller
   cannot tell which endpoint the framework serves.
 - The **route** — `app.get('/evening')` sets the media type before it writes the body, because the
-  framework's own default for a string is `text/html`; with `text/plain` set, the response is the
-  contract above. The route writes the status, the media type and the length and ends the body itself
-  rather than handing them to the framework, because the framework's own writer performs
-  conditional-request handling: it answers a request carrying `If-None-Match: *` with `304 Not
-  Modified` and strips the media type, the length and the body, where the hand-written endpoint answers
-  `200` to that request like any other. The length is therefore counted in bytes here, exactly as
-  `server.js` counts the lengths it writes.
+  contract publishes `text/plain; charset=utf-8` and this writer ends the response with `res.end`,
+  which sets no media type of its own: omit the type and the answer would carry no `Content-Type` at
+  all. With `text/plain` set, the response is the contract above. The route writes the status, the
+  media type and the length and ends the body itself rather than handing them to the framework,
+  because the framework's own writer performs conditional-request handling: it answers a request
+  carrying `If-None-Match: *` with `304 Not Modified` and strips the media type, the length and the
+  body, where the hand-written endpoint answers `200` to that request like any other. The length is
+  therefore counted in bytes here, exactly as `server.js` counts the lengths it writes.
 - The **fallback**, mounted last — `app.use(fallback)`, where `fallback` is `server.js`'s
   `handleRequest`. Every request the routes above do not claim reaches the hand-written handler, so
   `/hello` and the boundary around it are answered by the code that always answered them.
