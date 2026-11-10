@@ -12,17 +12,17 @@ const METHOD_NOT_ALLOWED_BODY = 'Method Not Allowed';
  * paths lives in two places for the two to disagree about.
  *
  * Four of the framework's defaults are overridden below, once, because each one would otherwise be
- * visible to a client: the framework advertises itself and generates an entity tag on every response it
- * handles, the responses written by a handler mounted in its chain included, and it matches a route
- * against the trailing-slash and differently-cased forms of its path. Overridden, the endpoint here and
- * the endpoint the framework does not serve are indistinguishable in status, media type, headers and
- * body.
+ * visible to a client: the framework advertises itself on every response it handles, the responses
+ * written by a handler mounted in its chain included, generates an entity tag on the responses it
+ * writes itself, and matches a route against the trailing-slash and differently-cased forms of its
+ * path. Overridden, the endpoint here and the endpoint the framework does not serve are
+ * indistinguishable in status, media type, headers and body.
  *
- * @param {{ fallback?: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => void }} [options]
+ * @param {{ fallback: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => void }} options
  *   `fallback` answers every request no route here claims and is expected to end the response itself.
  * @returns {import('express').Express} The application, usable directly as a request listener.
  */
-export function createApp({ fallback } = {}) {
+export function createApp({ fallback }) {
   const app = express();
 
   // Both headers describe the framework rather than the answer, and the advertisement is added to every
@@ -57,9 +57,15 @@ export function createApp({ fallback } = {}) {
   /**
    * `GET /evening` — `200 OK`, `text/plain; charset=utf-8`, the body `Good evening`.
    *
-   * The media type is set before the body because the framework's default for a string is `text/html`,
-   * which would publish a different contract from the one the project's own writer publishes. The
-   * response length is not written here because the framework measures the body in bytes for us.
+   * The media type is set explicitly because the contract publishes `text/plain; charset=utf-8`, where
+   * the framework's default for a string body is `text/html`.
+   *
+   * The response is written with the response object rather than through `res.send`, because `res.send`
+   * reads the request as a conditional one: a request carrying `If-None-Match: *` makes it replace this
+   * `200` with a `304` and drop the media type, the length and the body, which would let a caller tell
+   * this endpoint from the one the project's own handler answers. So the status and the media type are
+   * set, the length is measured in bytes, and the body is ended directly: the three values the
+   * project's own writer writes for its own outcomes.
    *
    * The framework matches the path component of the URL while the project's own handler compares the
    * whole URL string, so `GET /evening?x=1` answers `200` where `GET /hello?x=1` answers `404`. That
@@ -71,14 +77,15 @@ export function createApp({ fallback } = {}) {
    * @returns {void}
    */
   app.get('/evening', (req, res) => {
-    res.status(200).type('text/plain').send(EVENING_BODY);
+    res.status(200).type('text/plain');
+    res.set('Content-Length', Buffer.byteLength(EVENING_BODY));
+    res.end(EVENING_BODY);
   });
 
   // Mounted last, so it sees exactly the requests nothing above claimed — which is what makes an
   // unregistered URL a `404 Not Found` from the project's own handler rather than the framework's
-  // default answer. Guarded, so an application built without one still answers every request instead
-  // of failing on the first unmatched one.
-  if (typeof fallback === 'function') app.use(fallback);
+  // default answer.
+  app.use(fallback);
 
   return app;
 }

@@ -49,9 +49,9 @@ listening is falsy exactly as it is when the file is imported, and the process s
 silent no-op, not an error. `node --version` is the diagnosis, and running on 22.18.0 or later — on
 the latest patch of the line you choose — is the fix.
 
-The test suite catches the same mistake: its final case starts the entry point in a child process
-and fails when no startup line arrives, so on an old runtime `npm test` fails loudly instead of
-passing silently.
+The test suite catches the same mistake: the final case of `test/hello.test.js` starts the entry
+point in a child process and fails when no startup line arrives, so on an old runtime `npm test`
+fails loudly instead of passing silently.
 
 ## Run it
 
@@ -114,7 +114,7 @@ client URLs do not change with `HOST`: from this machine the endpoints are still
 them at `http://<machine-ip>:3000/hello` and `http://<machine-ip>:3000/evening`.
 
 **`HOST=0.0.0.0` exposes the listener to your local network** — anyone who can reach the machine can
-call the endpoint. That is exactly why the default is `127.0.0.1`, which accepts connections from
+call both endpoints. That is exactly why the default is `127.0.0.1`, which accepts connections from
 this machine only. Keep the default unless you want that exposure.
 
 ### If the port is already in use
@@ -186,7 +186,7 @@ Four of those lines are the contract here too:
 
 The same `Date`, `Connection: keep-alive` and `Keep-Alive: timeout=5` lines are added by Node, and
 they are not part of the contract. `Good evening` is pure ASCII, so its byte count and its character
-count agree at 12, measured by the framework rather than by the handler. Notice what is **not** in
+count agree at 12, measured in bytes in `app.js` rather than by the handler. Notice what is **not** in
 the exchange: `X-Powered-By: Express` and `ETag` are the two headers Express adds by default, and
 the application turns both off, so neither endpoint's responses carry them.
 
@@ -299,8 +299,9 @@ rendered as plain text. A browser cannot show you the raw headers, so use it for
 - The **only file that names the framework**: `import express from 'express'`, and the application it
   builds is exported as `createApp({ fallback })`.
 - The **defaults it overrides**, because each of them would otherwise be visible to a client. Express
-  advertises itself and generates an entity tag on every response it handles, so `x-powered-by` is
-  disabled and ETag generation is turned off — which is why neither endpoint's responses carry
+  advertises itself on every response it handles, the responses written by a handler mounted in its
+  chain included, and generates an entity tag on the responses it writes itself, so `x-powered-by`
+  is disabled and ETag generation is turned off — which is why neither endpoint's responses carry
   `X-Powered-By: Express` or an `ETag`. Routing is strict and case-sensitive as well, so `/evening/`
   and `/EVENING` are `404` rather than a wider match than the path the route was registered for.
 - The **method rule** — `app.all('/evening')` is registered ahead of the route, so any method other
@@ -309,7 +310,7 @@ rendered as plain text. A browser cannot show you the raw headers, so use it for
   cannot tell which endpoint the framework serves.
 - The **route** — `app.get('/evening')` sets the media type before it writes the body, because the
   framework's own default for a string is `text/html`; with `text/plain` set, the response is the
-  contract above. The framework measures the body itself, which is where the `Content-Length` comes
+  contract above. `app.js` measures the body in bytes, which is where the `Content-Length` comes
   from.
 - The **fallback**, mounted last — `app.use(fallback)`, where `fallback` is `server.js`'s
   `handleRequest`. Every request the routes above do not claim reaches the hand-written handler, so
@@ -389,12 +390,12 @@ six in `test/evening.test.js`:
 | `GET /hello/` | `404` — pins the exact-match boundary, so a later change cannot silently widen the route |
 | `POST /hello` | `405`; `Allow` exactly `GET`; body `Method Not Allowed` |
 | the entry point, run as a child process | the startup line `Server listening on http://127.0.0.1:<port>`, then `GET /hello` through it returns `200` with the body `Hello world` |
-| `GET /evening` | `200`; `Content-Type` exactly `text/plain; charset=utf-8`; `Content-Length` exactly `12`; body exactly `Good evening`; neither `X-Powered-By` nor `ETag` |
-| `GET /evening/` | `404` — pins the exact-match boundary, so a later change cannot silently widen the route |
-| `GET /EVENING` | `404` — pins case-sensitive routing |
+| `GET /evening` | `200`; `Content-Type` exactly `text/plain; charset=utf-8`; `Content-Length` exactly `12`; body exactly `Good evening`; neither `X-Powered-By` nor `ETag`; and a request carrying `If-None-Match: *` gets that same `200` rather than a `304` |
+| `GET /evening/` | `404`; body exactly `Not Found` — the body the project's own handler answers with, in place of the framework's HTML page — and the same `404` for `/evening/x`, pinning that the route claims exactly one path rather than a subtree; `/evening?x=1` is the one divergence the routing accepts, `200` where `/hello?x=1` is `404` |
+| `GET /EVENING` | `404`; body exactly `Not Found` — pins case-sensitive routing |
 | `POST /evening` | `405`; `Allow` exactly `GET`; body `Method Not Allowed` |
-| `HEAD /evening` | the same `405` contract — `Allow: GET` — with zero body bytes |
-| `GET /hello` through the same listener | `200` with the body `Hello world` — pins the composition: both endpoints come from one server |
+| `HEAD /evening` | the same `405` contract — `Allow: GET` and `Content-Type` exactly `text/plain; charset=utf-8` — with zero body bytes |
+| `GET /hello` through the same listener | `200` with the body `Hello world`; neither `X-Powered-By` nor `ETag` — pins the composition: both endpoints come from one server |
 
 Because the body assertion is a strict equality against the text of a real response, the suite
 proves the requirement itself rather than a paraphrase of it. The runner exits non-zero on any

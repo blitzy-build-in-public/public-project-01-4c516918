@@ -37,18 +37,60 @@ test('GET /evening returns 200 with the exact body Good evening', async () => {
   // hand-written endpoint's included — so their absence is the header surface the contract publishes.
   assert.strictEqual(res.headers.get('x-powered-by'), null);
   assert.strictEqual(res.headers.get('etag'), null);
+
+  // The published answer must not be replaceable by a conditional request: the framework's send path
+  // reads `If-None-Match: *` as a match and would answer `304` with the media type, the length and the
+  // body stripped, which would let a caller tell this endpoint from the hand-written one, whose answers
+  // are written without reading a request header. Written unconditionally, it answers as it always does.
+  const conditional = await fetch(`${base}/evening`, { headers: { 'If-None-Match': '*' } });
+  assert.strictEqual(conditional.status, 200);
+  assert.strictEqual(conditional.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.strictEqual(conditional.headers.get('content-length'), '12');
+  assert.strictEqual(await conditional.text(), 'Good evening');
 });
 
 test('GET /evening/ returns 404 because the path is matched exactly', async () => {
   // Pins the exact-match boundary: route matching that ignored the trailing slash would answer 200.
   const res = await fetch(`${base}/evening/`);
   assert.strictEqual(res.status, 404);
+  // The 404 is the project's own answer rather than the framework's HTML page, and a status alone cannot
+  // tell the two apart, so the media type, the byte count and the body the boundary publishes are
+  // asserted beside it.
+  assert.strictEqual(res.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.strictEqual(res.headers.get('content-length'), '9');
+  assert.strictEqual(await res.text(), 'Not Found');
+
+  // The route claims exactly one path, not the subtree below it: a registration matched by prefix would
+  // answer 200 here, where the boundary publishes the same answer as for any other unregistered URL.
+  const below = await fetch(`${base}/evening/x`);
+  assert.strictEqual(below.status, 404);
+  assert.strictEqual(below.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.strictEqual(below.headers.get('content-length'), '9');
+  assert.strictEqual(await below.text(), 'Not Found');
+
+  // The one divergence the plan accepts (§0.3.2, §0.6): the framework matches the path component of the
+  // URL while the project's own handler compares the whole URL string, so a query string is answered here
+  // and stays a 404 on /hello. Pinned rather than normalised, because matching the URL literally inside
+  // the framework would discard the routing the framework was added for.
+  const queried = await fetch(`${base}/evening?x=1`);
+  assert.strictEqual(queried.status, 200);
+  assert.strictEqual(queried.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.strictEqual(queried.headers.get('content-length'), '12');
+  assert.strictEqual(await queried.text(), 'Good evening');
+
+  const queriedHello = await fetch(`${base}/hello?x=1`);
+  assert.strictEqual(queriedHello.status, 404);
 });
 
 test('GET /EVENING returns 404 because routing is case-sensitive', async () => {
   // The other half of the same boundary: matching that ignored case would answer 200 here.
   const res = await fetch(`${base}/EVENING`);
   assert.strictEqual(res.status, 404);
+  // As on the trailing-slash boundary, the 404 is the project's own plain-text answer rather than the
+  // framework's HTML page, so the published media type, byte count and body are asserted with it.
+  assert.strictEqual(res.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.strictEqual(res.headers.get('content-length'), '9');
+  assert.strictEqual(await res.text(), 'Not Found');
 });
 
 test('POST /evening returns 405 with Allow: GET and the body Method Not Allowed', async () => {
@@ -66,6 +108,7 @@ test('HEAD /evening returns 405 with Allow: GET and no body', async () => {
   const res = await fetch(`${base}/evening`, { method: 'HEAD' });
   assert.strictEqual(res.status, 405);
   assert.strictEqual(res.headers.get('allow'), 'GET');
+  assert.strictEqual(res.headers.get('content-type'), 'text/plain; charset=utf-8');
   assert.strictEqual(res.headers.get('content-length'), '18');
   assert.strictEqual(await res.text(), '');
 });
@@ -78,4 +121,9 @@ test('GET /hello is served by the same listener', async () => {
   assert.strictEqual(res.headers.get('content-type'), 'text/plain; charset=utf-8');
   assert.strictEqual(res.headers.get('content-length'), '11');
   assert.strictEqual(await res.text(), 'Hello world');
+  // The framework sees this response too, on its way to the fallback, so its default headers are pinned
+  // on this endpoint as well: what it publishes is the header surface it had before the framework was
+  // introduced, and that surface is what keeps the two endpoints indistinguishable to a caller.
+  assert.strictEqual(res.headers.get('x-powered-by'), null);
+  assert.strictEqual(res.headers.get('etag'), null);
 });
