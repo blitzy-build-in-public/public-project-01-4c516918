@@ -186,9 +186,10 @@ Four of those lines are the contract here too:
 
 The same `Date`, `Connection: keep-alive` and `Keep-Alive: timeout=5` lines are added by Node, and
 they are not part of the contract. `Good evening` is pure ASCII, so its byte count and its character
-count agree at 12, measured in bytes in `app.js` rather than by the handler. Notice what is **not** in
-the exchange: `X-Powered-By: Express` and `ETag` are the two headers Express adds by default, and
-the application turns both off, so neither endpoint's responses carry them.
+count agree at 12, measured in bytes by the application itself, as `server.js` measures the length of
+the body it writes. Notice what is **not** in the exchange: Express adds `X-Powered-By: Express` to
+every response it handles and an `ETag` only to the responses it writes itself, and the application
+turns both off, so neither endpoint's responses carry them.
 
 ## Everything else: the boundary
 
@@ -244,7 +245,9 @@ Five consequences of this boundary are deliberate rather than defects:
 - `/hello/` and `/hello?x=1` are `404`. The path is compared as a literal string and no URL parsing
   is done, so a trailing slash or a query string makes the URL something other than `/hello`.
 - `/HELLO` is `404`, because the comparison is case-sensitive.
-- Nothing outside the exact pairs `GET` + `/hello` and `GET` + `/evening` ever returns `200`.
+- Nothing else returns `200`: a `GET` whose URL is exactly `/hello`, and a `GET` whose path
+  component is `/evening`. The two are matched differently — the whole URL for the first, the
+  path component for the second — which is the divergence the last bullet explains.
 - `Allow` on the 405 is always exactly `GET`, the only method the resource supports.
 - `/evening?x=1` is `200`, where `/hello?x=1` is `404`. That divergence is deliberate: Express
   matches the path component of the URL and ignores the query string, while the hand-written handler
@@ -268,7 +271,7 @@ rendered as plain text. A browser cannot show you the raw headers, so use it for
 - The **composition** — `start()` builds that listener from the application:
   `createServer(createApp({ fallback: handleRequest }))`. `handleRequest` is passed in as the
   fallback and mounted last, so it still answers `/hello` and both boundary requests itself, and
-  `app.js` is the only file in the project that names `express`.
+  `app.js` is the only source file in the project whose code names `express`.
 - The **defaults and their overrides** — `HOST` and `PORT` are read from the environment once, at
   startup, and fall back to `127.0.0.1` and `3000`.
 - The **handler's match order** — `handleRequest(req, res)` compares `req.url` first and
@@ -296,8 +299,8 @@ rendered as plain text. A browser cannot show you the raw headers, so use it for
 
 ### `app.js` — the Express application
 
-- The **only file that names the framework**: `import express from 'express'`, and the application it
-  builds is exported as `createApp({ fallback })`.
+- The **only source file that names the framework**: `import express from 'express'`, and the
+  application it builds is exported as `createApp({ fallback })`.
 - The **defaults it overrides**, because each of them would otherwise be visible to a client. Express
   advertises itself on every response it handles, the responses written by a handler mounted in its
   chain included, and generates an entity tag on the responses it writes itself, so `x-powered-by`
@@ -310,8 +313,12 @@ rendered as plain text. A browser cannot show you the raw headers, so use it for
   cannot tell which endpoint the framework serves.
 - The **route** — `app.get('/evening')` sets the media type before it writes the body, because the
   framework's own default for a string is `text/html`; with `text/plain` set, the response is the
-  contract above. `app.js` measures the body in bytes, which is where the `Content-Length` comes
-  from.
+  contract above. The route writes the status, the media type and the length and ends the body itself
+  rather than handing them to the framework, because the framework's own writer performs
+  conditional-request handling: it answers a request carrying `If-None-Match: *` with `304 Not
+  Modified` and strips the media type, the length and the body, where the hand-written endpoint answers
+  `200` to that request like any other. The length is therefore counted in bytes here, exactly as
+  `server.js` counts the lengths it writes.
 - The **fallback**, mounted last — `app.use(fallback)`, where `fallback` is `server.js`'s
   `handleRequest`. Every request the routes above do not claim reaches the hand-written handler, so
   `/hello` and the boundary around it are answered by the code that always answered them.
@@ -360,9 +367,12 @@ The same shape as the first suite, over the same kind of real socket:
   imported from the code under test — so the assertions state the contract rather than a paraphrase
   of it.
 - The six cases pin the second endpoint's contract and its boundary: the `200` of `GET /evening` with
-  its media type, its length and its body; the `404` for `/evening/` and the `404` for `/EVENING`;
-  the `405` with `Allow: GET` for `POST` and for `HEAD`; and the absence of `X-Powered-By` and
-  `ETag`.
+  its media type, its length and its body, and the same `200` for a request carrying
+  `If-None-Match: *`; the `404` for `/evening/`, the `404` for `/EVENING` and the `404` for
+  `/evening/x`, which pins that the route claims that one path rather than the whole subtree below it;
+  the `405` with `Allow: GET` for `POST` and for `HEAD`; the accepted `200` divergence at
+  `/evening?x=1`; and the absence of `X-Powered-By` and `ETag`, asserted on the `/hello` response as
+  well as on the framework-written one.
 - One of the cases fetches `/hello` from the same listener, so the suite also pins the composition:
   both endpoints are served by one server, not two.
 
@@ -391,8 +401,8 @@ six in `test/evening.test.js`:
 | `POST /hello` | `405`; `Allow` exactly `GET`; body `Method Not Allowed` |
 | the entry point, run as a child process | the startup line `Server listening on http://127.0.0.1:<port>`, then `GET /hello` through it returns `200` with the body `Hello world` |
 | `GET /evening` | `200`; `Content-Type` exactly `text/plain; charset=utf-8`; `Content-Length` exactly `12`; body exactly `Good evening`; neither `X-Powered-By` nor `ETag`; and a request carrying `If-None-Match: *` gets that same `200` rather than a `304` |
-| `GET /evening/` | `404`; body exactly `Not Found` — the body the project's own handler answers with, in place of the framework's HTML page — and the same `404` for `/evening/x`, pinning that the route claims exactly one path rather than a subtree; `/evening?x=1` is the one divergence the routing accepts, `200` where `/hello?x=1` is `404` |
-| `GET /EVENING` | `404`; body exactly `Not Found` — pins case-sensitive routing |
+| `GET /evening/` | `404`; `Content-Length` exactly `9`; body exactly `Not Found` — the body the project's own handler answers with, in place of the framework's HTML page — and the same `404` for `/evening/x`, pinning that the route claims exactly one path rather than a subtree; `/evening?x=1` is the one divergence the routing accepts, `200` where `/hello?x=1` is `404` |
+| `GET /EVENING` | `404`; `Content-Length` exactly `9`; body exactly `Not Found` — pins case-sensitive routing |
 | `POST /evening` | `405`; `Allow` exactly `GET`; body `Method Not Allowed` |
 | `HEAD /evening` | the same `405` contract — `Allow: GET` and `Content-Type` exactly `text/plain; charset=utf-8` — with zero body bytes |
 | `GET /hello` through the same listener | `200` with the body `Hello world`; neither `X-Powered-By` nor `ETag` — pins the composition: both endpoints come from one server |

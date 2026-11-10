@@ -42,7 +42,14 @@ test('GET /evening returns 200 with the exact body Good evening', async () => {
   // reads `If-None-Match: *` as a match and would answer `304` with the media type, the length and the
   // body stripped, which would let a caller tell this endpoint from the hand-written one, whose answers
   // are written without reading a request header. Written unconditionally, it answers as it always does.
-  const conditional = await fetch(`${base}/evening`, { headers: { 'If-None-Match': '*' } });
+  //
+  // The cache directive has to be there rather than decorating the request: the client adds a no-cache
+  // directive of its own to a request that carries a conditional header, and a no-cache request is never
+  // fresh, so the validator is not evaluated at all — without `max-age=0` the writer this case exists to
+  // reject would answer `200` here too, and the case could not fail.
+  const conditional = await fetch(`${base}/evening`, {
+    headers: { 'If-None-Match': '*', 'cache-control': 'max-age=0' },
+  });
   assert.strictEqual(conditional.status, 200);
   assert.strictEqual(conditional.headers.get('content-type'), 'text/plain; charset=utf-8');
   assert.strictEqual(conditional.headers.get('content-length'), '12');
